@@ -41,7 +41,7 @@ append_csv <- function(con, table, release_version, path, delim = "\t") {
   escaped <- gsub("'", "''", path)
 
   read_expr <- sprintf(
-    "SELECT '%s' AS release_version, * FROM read_csv_auto('%s', delim='%s', comment='#', header=true, all_varchar=false, nullstr=['', '.'])",
+    "SELECT '%s' AS release_version, * FROM read_csv_auto('%s', delim='%s', comment='#', header=true, all_varchar=false, nullstr=['', '.'], sample_size=-1)",
     release_version, escaped, delim
   )
 
@@ -58,34 +58,37 @@ append_csv <- function(con, table, release_version, path, delim = "\t") {
       sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s'", table)
     )$column_name
 
-    for (col in setdiff(file_cols, table_cols)) {
-      dbExecute(con, sprintf('ALTER TABLE "%s" ADD COLUMN "%s" VARCHAR', table, col))
+    for (col in setdiff(tolower(file_cols), tolower(table_cols))) {
+      actual_col <- file_cols[tolower(file_cols) == col]
+      dbExecute(con, sprintf('ALTER TABLE "%s" ADD COLUMN IF NOT EXISTS "%s" VARCHAR', table, actual_col))
     }
 
     dbExecute(con, sprintf("INSERT INTO %s BY NAME %s", table, read_expr))
   }
 }
 
-# Unpivot a wide CNA matrix to long format, then append.
+# Pivot wide CNA matrix to long format in R, then append to DuckDB.
 append_cna <- function(con, release_version, path) {
-  path    <- normalizePath(path)
-  escaped <- gsub("'", "''", path)
+  path <- normalizePath(path)
 
-  read_expr <- sprintf(
-    "SELECT '%s' AS release_version, Hugo_Symbol, Tumor_Sample_Barcode, CNA_value::INTEGER AS CNA_value
-     FROM (
-       UNPIVOT (SELECT * FROM read_csv_auto('%s', delim='\\t', comment='#', header=true, all_varchar=false, nullstr='.'))
-       ON COLUMNS(* EXCLUDE (Hugo_Symbol))
-       INTO NAME Tumor_Sample_Barcode VALUE CNA_value
-     )",
-    release_version, escaped
-  )
+  wide <- fread(path, sep = "\t", header = TRUE, data.table = TRUE,
+                na.strings = c("", "."))
+  if (!"Hugo_Symbol" %in% names(wide)) {
+    message("    [warn] CNA file missing Hugo_Symbol: ", path)
+    return(invisible(NULL))
+  }
 
-  exists <- dbExistsTable(con, "cna")
-  if (!exists) {
-    db_execute(con, sprintf("CREATE TABLE cna AS %s", read_expr))
+  long <- melt(wide, id.vars = "Hugo_Symbol",
+               variable.name = "Tumor_Sample_Barcode",
+               value.name = "CNA_value",
+               variable.factor = FALSE)
+  long[, release_version := release_version]
+  long[, CNA_value := as.integer(CNA_value)]
+
+  if (!dbExistsTable(con, "cna")) {
+    dbWriteTable(con, "cna", long)
   } else {
-    db_execute(con, sprintf("INSERT INTO cna %s", read_expr))
+    dbAppendTable(con, "cna", long)
   }
 }
 
