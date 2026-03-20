@@ -149,19 +149,36 @@ add_release <- function(
   }
 }
 
-# Insert a TSV into an existing table using BY NAME (handles column evolution).
+# Insert a TSV into a table, creating it on first use and adding new columns as needed.
 .insert_csv <- function(con, table, release_version, path) {
-  escaped <- gsub("'", "''", normalizePath(path))
-  sql <- sprintf(
-    "INSERT INTO %s BY NAME
-     SELECT '%s' AS release_version, *
+  escaped  <- gsub("'", "''", normalizePath(path))
+  read_sql <- sprintf(
+    "SELECT '%s' AS release_version, *
      FROM read_csv_auto('%s', delim='\\t', comment='#', header=true,
-                        all_varchar=false, nullstr=['', '.'], sample_size=-1)",
-    table,
-    release_version,
-    escaped
+                        all_varchar=true, nullstr=['', '.'], sample_size=-1)",
+    release_version, escaped
   )
-  DBI::dbExecute(con, sql)
+
+  if (!DBI::dbExistsTable(con, table)) {
+    DBI::dbExecute(con, sprintf("CREATE TABLE %s AS %s", table, read_sql))
+    return(invisible(NULL))
+  }
+
+  # Add any new columns from this file before inserting
+  raw        <- readLines(path, n = 20)
+  header     <- strsplit(raw[!startsWith(raw, "#")][1], "\t")[[1]]
+  file_cols  <- c("release_version", header)
+  table_cols <- DBI::dbGetQuery(
+    con,
+    sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s'", table)
+  )$column_name
+
+  for (col in setdiff(tolower(file_cols), tolower(table_cols))) {
+    actual <- file_cols[tolower(file_cols) == col][1]
+    DBI::dbExecute(con, sprintf('ALTER TABLE "%s" ADD COLUMN IF NOT EXISTS "%s" VARCHAR', table, actual))
+  }
+
+  DBI::dbExecute(con, sprintf("INSERT INTO %s BY NAME %s", table, read_sql))
 }
 
 # Clinical files: early releases have a combined patient+sample file.
