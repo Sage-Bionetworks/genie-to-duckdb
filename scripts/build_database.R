@@ -86,6 +86,7 @@ append_cna <- function(con, release_version, path) {
                variable.factor = FALSE)
   long[, release_version := release_version]
   long[, CNA_value := as.integer(CNA_value)]
+  long <- long[!is.na(CNA_value) & CNA_value != 0L]
 
   if (!dbExistsTable(con, "cna")) {
     dbWriteTable(con, "cna", long)
@@ -184,12 +185,6 @@ load_file <- function(con, release_version, path) {
 
   } else if (grepl("\\.bed$", name, ignore.case = TRUE)) {
     append_csv(con, "bed", release_version, path)
-
-  } else if (grepl("_hg19\\.seg$|data_cna.*\\.seg$|genie_data_cna", name, ignore.case = TRUE)) {
-    append_csv(con, "seg", release_version, path)
-
-  } else if (grepl("^tmb\\.tsv$", name, ignore.case = TRUE)) {
-    append_csv(con, "tmb", release_version, path)
 
   } else {
     message("    [skip] unrecognized file: ", name)
