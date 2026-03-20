@@ -10,15 +10,20 @@
 create_genie_db <- function(db_path) {
   con <- DBI::dbConnect(duckdb::duckdb(), dbdir = db_path)
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS releases (
       release_version VARCHAR PRIMARY KEY,
       syn_id          VARCHAR,
       loaded_at       TIMESTAMP
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS clinical_patient (
       release_version VARCHAR,
       PATIENT_ID      VARCHAR,
@@ -35,9 +40,12 @@ create_genie_db <- function(db_path) {
       SECONDARY_RACE  VARCHAR,
       TERTIARY_RACE   VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS clinical_sample (
       release_version      VARCHAR,
       PATIENT_ID           VARCHAR,
@@ -54,9 +62,12 @@ create_genie_db <- function(db_path) {
       PRIMARY_RACE         VARCHAR,
       ETHNICITY            VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS mutations (
       release_version         VARCHAR,
       Hugo_Symbol             VARCHAR,
@@ -89,18 +100,24 @@ create_genie_db <- function(db_path) {
       n_alt_count             DOUBLE,
       FILTER                  VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS cna (
       release_version      VARCHAR,
       Hugo_Symbol          VARCHAR,
       Tumor_Sample_Barcode VARCHAR,
       CNA_value            INTEGER
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS sv (
       release_version        VARCHAR,
       Center                 VARCHAR,
@@ -118,9 +135,12 @@ create_genie_db <- function(db_path) {
       RNA_Support            VARCHAR,
       Annotation             VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS gene_matrix (
       release_version VARCHAR,
       SAMPLE_ID       VARCHAR,
@@ -129,9 +149,12 @@ create_genie_db <- function(db_path) {
       fusions         VARCHAR,
       structural_variants VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS assay_information (
       release_version    VARCHAR,
       SEQ_ASSAY_ID       VARCHAR,
@@ -143,9 +166,12 @@ create_genie_db <- function(db_path) {
       target_capture_kit VARCHAR,
       instrument_model   VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS genomic_information (
       release_version VARCHAR,
       Chromosome      VARCHAR,
@@ -156,9 +182,12 @@ create_genie_db <- function(db_path) {
       Feature_Type    VARCHAR,
       includeVariants VARCHAR
     )
-  ")
+  "
+  )
 
-  DBI::dbExecute(con, "
+  DBI::dbExecute(
+    con,
+    "
     CREATE TABLE IF NOT EXISTS bed (
       release_version VARCHAR,
       Chromosome      VARCHAR,
@@ -168,7 +197,8 @@ create_genie_db <- function(db_path) {
       ID              VARCHAR,
       SEQ_ASSAY_ID    VARCHAR
     )
-  ")
+  "
+  )
 
   message("Database ready: ", db_path)
   con

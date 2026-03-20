@@ -25,10 +25,16 @@ SKIP_PATTERNS <- c(
 #' @param version_syn_id  Synapse folder ID for this release version.
 #' @param tmp_dir Directory to use for temporary file downloads.
 #' @return Invisibly TRUE if loaded, FALSE if skipped.
-add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) {
+add_release <- function(
+  con,
+  version_name,
+  version_syn_id,
+  tmp_dir = tempdir()
+) {
   # Skip if already loaded
   already <- DBI::dbGetQuery(
-    con, "SELECT COUNT(*) FROM releases WHERE release_version = ?",
+    con,
+    "SELECT COUNT(*) FROM releases WHERE release_version = ?",
     list(version_name)
   )[[1]]
   if (already > 0) {
@@ -45,18 +51,34 @@ add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) 
   paths <- character(0)
 
   for (child in children) {
-    if (child$type == "org.sagebionetworks.repo.model.Folder") next
-    if (!.is_relevant(child$name)) next
+    if (child$type == "org.sagebionetworks.repo.model.Folder") {
+      next
+    }
+    if (!.is_relevant(child$name)) {
+      next
+    }
 
     message("    [download] ", child$name)
-    tryCatch({
-      synapser::synGet(child$id, downloadLocation = release_tmp,
-                       followLink = TRUE, ifcollision = "overwrite.local")
-      p <- file.path(release_tmp, child$name)
-      if (file.exists(p)) paths <- c(paths, p)
-    }, error = function(e) {
-      message("    [error] downloading ", child$name, ": ", conditionMessage(e))
-    })
+    tryCatch(
+      {
+        synapser::synGet(
+          child$id,
+          downloadLocation = release_tmp,
+          followLink = TRUE,
+          ifcollision = "overwrite.local"
+        )
+        p <- file.path(release_tmp, child$name)
+        if (file.exists(p)) paths <- c(paths, p)
+      },
+      error = function(e) {
+        message(
+          "    [error] downloading ",
+          child$name,
+          ": ",
+          conditionMessage(e)
+        )
+      }
+    )
   }
 
   # Load each file
@@ -66,7 +88,12 @@ add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) 
     tryCatch(
       .load_file(con, version_name, path),
       error = function(e) {
-        message("    [error] loading ", basename(path), ": ", conditionMessage(e))
+        message(
+          "    [error] loading ",
+          basename(path),
+          ": ",
+          conditionMessage(e)
+        )
         errors <<- errors + 1L
       }
     )
@@ -80,7 +107,9 @@ add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) 
   )
 
   msg <- sprintf("  [done] %s", version_name)
-  if (errors > 0) msg <- paste0(msg, sprintf(" (%d file errors)", errors))
+  if (errors > 0) {
+    msg <- paste0(msg, sprintf(" (%d file errors)", errors))
+  }
   message(msg)
   invisible(TRUE)
 }
@@ -91,7 +120,13 @@ add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) 
   name <- basename(path)
   message("    loading: ", name)
 
-  if (grepl("^data_clinical_patient|^data_clinical\\.txt|^data_clinical_supp", name, ignore.case = TRUE)) {
+  if (
+    grepl(
+      "^data_clinical_patient|^data_clinical\\.txt|^data_clinical_supp",
+      name,
+      ignore.case = TRUE
+    )
+  ) {
     .load_clinical(con, release_version, path)
   } else if (grepl("^data_clinical_sample", name, ignore.case = TRUE)) {
     .insert_csv(con, "clinical_sample", release_version, path)
@@ -122,17 +157,19 @@ add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) 
      SELECT '%s' AS release_version, *
      FROM read_csv_auto('%s', delim='\\t', comment='#', header=true,
                         all_varchar=false, nullstr=['', '.'], sample_size=-1)",
-    table, release_version, escaped
+    table,
+    release_version,
+    escaped
   )
   DBI::dbExecute(con, sql)
 }
 
 # Clinical files: early releases have a combined patient+sample file.
 .load_clinical <- function(con, release_version, path) {
-  lines  <- readLines(path, n = 20)
+  lines <- readLines(path, n = 20)
   header <- strsplit(lines[!startsWith(lines, "#")][1], "\t")[[1]]
 
-  has_sample  <- "SAMPLE_ID"  %in% header
+  has_sample <- "SAMPLE_ID" %in% header
   has_patient <- "PATIENT_ID" %in% header
 
   if (has_sample) {
@@ -143,37 +180,65 @@ add_release <- function(con, version_name, version_syn_id, tmp_dir = tempdir()) 
   }
   if (has_sample && has_patient) {
     # Combined file: also extract patient-level rows
-    patient_cols <- c("PATIENT_ID", "SEX", "PRIMARY_RACE", "ETHNICITY", "CENTER",
-                      "INT_CONTACT", "INT_DOD", "YEAR_CONTACT", "DEAD", "YEAR_DEATH",
-                      "BIRTH_YEAR", "SECONDARY_RACE", "TERTIARY_RACE")
+    patient_cols <- c(
+      "PATIENT_ID",
+      "SEX",
+      "PRIMARY_RACE",
+      "ETHNICITY",
+      "CENTER",
+      "INT_CONTACT",
+      "INT_DOD",
+      "YEAR_CONTACT",
+      "DEAD",
+      "YEAR_DEATH",
+      "BIRTH_YEAR",
+      "SECONDARY_RACE",
+      "TERTIARY_RACE"
+    )
     available <- intersect(patient_cols, header)
-    col_sql   <- paste(sprintf('"%s"', available), collapse = ", ")
-    escaped   <- gsub("'", "''", normalizePath(path))
-    DBI::dbExecute(con, sprintf(
-      "INSERT INTO clinical_patient BY NAME
+    col_sql <- paste(sprintf('"%s"', available), collapse = ", ")
+    escaped <- gsub("'", "''", normalizePath(path))
+    DBI::dbExecute(
+      con,
+      sprintf(
+        "INSERT INTO clinical_patient BY NAME
        SELECT '%s' AS release_version, %s
        FROM read_csv_auto('%s', delim='\\t', comment='#', header=true,
                           all_varchar=false, nullstr=['', '.'], sample_size=-1)
        GROUP BY ALL",
-      release_version, col_sql, escaped
-    ))
+        release_version,
+        col_sql,
+        escaped
+      )
+    )
   }
 }
 
 # Pivot wide CNA matrix to long, drop zeros, then insert.
 .load_cna <- function(con, release_version, path) {
-  wide <- fread(path, sep = "\t", header = TRUE, data.table = TRUE,
-                na.strings = c("", "."))
+  wide <- fread(
+    path,
+    sep = "\t",
+    header = TRUE,
+    data.table = TRUE,
+    na.strings = c("", ".")
+  )
 
   if (!"Hugo_Symbol" %in% names(wide)) {
-    message("    [warn] CNA file missing Hugo_Symbol, skipping: ", basename(path))
+    message(
+      "    [warn] CNA file missing Hugo_Symbol, skipping: ",
+      basename(path)
+    )
     return(invisible(NULL))
   }
 
-  long <- melt(wide, id.vars = "Hugo_Symbol",
-               variable.name = "Tumor_Sample_Barcode",
-               value.name = "CNA_value",
-               variable.factor = FALSE)
+  long <- melt(
+    wide,
+    id.vars = "Hugo_Symbol",
+    variable.name = "Tumor_Sample_Barcode",
+    value.name = "CNA_value",
+    variable.factor = FALSE
+  )
   long[, release_version := release_version]
   long[, CNA_value := suppressWarnings(as.integer(CNA_value))]
   long <- long[!is.na(CNA_value) & CNA_value != 0L]
