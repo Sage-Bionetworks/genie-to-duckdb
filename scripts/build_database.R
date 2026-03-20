@@ -21,7 +21,9 @@ SKIP_PATTERNS <- c(
   "^meta_",
   "\\.pdf$",
   "\\.html$",
-  "\\.csv$"
+  "\\.csv$",
+  "_hg19\\.seg$|data_cna.*\\.seg$|genie_data_cna",  # seg files not needed
+  "^tmb\\.tsv$"                                      # tmb not needed
 )
 
 is_relevant <- function(name) !any(sapply(SKIP_PATTERNS, grepl, x = name))
