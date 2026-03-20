@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
   library(synapser)
   library(duckdb)
   library(DBI)
+  library(data.table)
   library(optparse)
 })
 
@@ -34,48 +35,50 @@ db_execute <- function(con, sql, ...) {
 }
 
 # Read a TSV into DuckDB, adding release_version, skipping # comment lines.
-# If the table doesn't exist, CREATE it; otherwise INSERT INTO ... BY NAME.
+# If the table doesn't exist, CREATE it; otherwise evolve schema and INSERT BY NAME.
 append_csv <- function(con, table, release_version, path, delim = "\t") {
-  path <- normalizePath(path)
+  path    <- normalizePath(path)
   escaped <- gsub("'", "''", path)
 
   read_expr <- sprintf(
-    "SELECT '%s' AS release_version, * FROM read_csv_auto('%s', delim='%s', comment='#', header=true, all_varchar=false)",
+    "SELECT '%s' AS release_version, * FROM read_csv_auto('%s', delim='%s', comment='#', header=true, all_varchar=false, nullstr=['', '.'])",
     release_version, escaped, delim
   )
 
-  exists <- dbExistsTable(con, table)
-  if (!exists) {
-    db_execute(con, sprintf("CREATE TABLE %s AS %s", table, read_expr))
+  if (!dbExistsTable(con, table)) {
+    dbExecute(con, sprintf("CREATE TABLE %s AS %s", table, read_expr))
   } else {
-    db_execute(con, sprintf("INSERT INTO %s BY NAME %s", table, read_expr))
+    # Evolve schema: add any columns in this file that don't yet exist in the table
+    raw_lines  <- readLines(path, n = 20)
+    header_line <- raw_lines[!startsWith(raw_lines, "#")][1]
+    file_cols   <- c("release_version", strsplit(header_line, "\t")[[1]])
+
+    table_cols <- dbGetQuery(
+      con,
+      sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s'", table)
+    )$column_name
+
+    for (col in setdiff(file_cols, table_cols)) {
+      dbExecute(con, sprintf('ALTER TABLE "%s" ADD COLUMN "%s" VARCHAR', table, col))
+    }
+
+    dbExecute(con, sprintf("INSERT INTO %s BY NAME %s", table, read_expr))
   }
 }
 
 # Unpivot a wide CNA matrix to long format, then append.
 append_cna <- function(con, release_version, path) {
-  path <- normalizePath(path)
-
-  # Read just the header row to get sample column names
-  header <- scan(path, what = character(), nlines = 1, sep = "\t", quiet = TRUE)
-  sample_cols <- header[-1]  # drop Hugo_Symbol
-
-  if (length(sample_cols) == 0) {
-    message("    [warn] CNA file has no sample columns: ", path)
-    return(invisible(NULL))
-  }
-
-  cols_sql <- paste(sprintf('"%s"', sample_cols), collapse = ", ")
-  escaped  <- gsub("'", "''", path)
+  path    <- normalizePath(path)
+  escaped <- gsub("'", "''", path)
 
   read_expr <- sprintf(
     "SELECT '%s' AS release_version, Hugo_Symbol, Tumor_Sample_Barcode, CNA_value::INTEGER AS CNA_value
      FROM (
-       UNPIVOT (SELECT * FROM read_csv_auto('%s', delim='\\t', comment='#', header=true, all_varchar=false))
-       ON %s
+       UNPIVOT (SELECT * FROM read_csv_auto('%s', delim='\\t', comment='#', header=true, all_varchar=false, nullstr='.'))
+       ON COLUMNS(* EXCLUDE (Hugo_Symbol))
        INTO NAME Tumor_Sample_Barcode VALUE CNA_value
      )",
-    release_version, escaped, cols_sql
+    release_version, escaped
   )
 
   exists <- dbExistsTable(con, "cna")
@@ -104,7 +107,7 @@ append_clinical <- function(con, release_version, path) {
 
   escaped <- gsub("'", "''", path)
   read_base <- sprintf(
-    "read_csv_auto('%s', delim='\\t', comment='#', header=true, all_varchar=false)",
+    "read_csv_auto('%s', delim='\\t', comment='#', header=true, all_varchar=false, nullstr='.')",
     escaped
   )
 
@@ -237,21 +240,18 @@ process_release <- function(con, version_name, version_syn_id, tmp_dir) {
   }
 
   message("  Loading ", length(paths_downloaded), " files into DuckDB...")
-  db_execute(con, "BEGIN")
-  tryCatch({
-    for (path in paths_downloaded) {
-      tryCatch(
-        load_file(con, version_name, path),
-        error = function(e) message("    [error] loading ", basename(path), ": ", conditionMessage(e))
-      )
-    }
-    record_release(con, version_name, version_syn_id)
-    db_execute(con, "COMMIT")
-    message("  [done] ", version_name)
-  }, error = function(e) {
-    db_execute(con, "ROLLBACK")
-    message("  [rollback] ", version_name, ": ", conditionMessage(e))
-  })
+  errors <- 0L
+  for (path in paths_downloaded) {
+    tryCatch(
+      load_file(con, version_name, path),
+      error = function(e) {
+        message("    [error] loading ", basename(path), ": ", conditionMessage(e))
+        errors <<- errors + 1L
+      }
+    )
+  }
+  record_release(con, version_name, version_syn_id)
+  message("  [done] ", version_name, if (errors > 0) sprintf(" (%d file errors)", errors) else "")
 
   # Clean up temp files regardless of outcome
   unlink(release_tmp, recursive = TRUE)
