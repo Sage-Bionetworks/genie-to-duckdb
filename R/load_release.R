@@ -9,7 +9,8 @@ SKIP_PATTERNS <- c(
   "\\.html$",
   "\\.csv$",
   "_hg19\\.seg$|data_cna.*\\.seg$|genie_data_cna",
-  "^tmb\\.tsv$"
+  "^tmb\\.tsv$",
+  "^data_clinical_supp"
 )
 
 .is_relevant <- function(name) !any(sapply(SKIP_PATTERNS, grepl, x = name))

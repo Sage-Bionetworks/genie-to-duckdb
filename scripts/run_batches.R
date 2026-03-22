@@ -81,6 +81,8 @@ for (group in groups) {
   }
 }
 
+normalize_column_names(con)
+
 message(
   "\nAll release groups processed. Tables: ",
   paste(dbListTables(con), collapse = ", ")

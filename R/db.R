@@ -32,3 +32,23 @@ create_genie_db <- function(db_path) {
   message("Database ready: ", db_path)
   con
 }
+
+#' Rename all columns in all tables to snake_case (lowercase).
+#'
+#' @param con Open DBI connection to the GENIE DuckDB database.
+normalize_column_names <- function(con) {
+  tables <- DBI::dbListTables(con)
+  for (tbl in tables) {
+    cols <- DBI::dbGetQuery(
+      con,
+      sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s'", tbl)
+    )$column_name
+    for (col in cols) {
+      new_col <- tolower(col)
+      if (new_col != col) {
+        DBI::dbExecute(con, sprintf('ALTER TABLE "%s" RENAME COLUMN "%s" TO "%s"', tbl, col, new_col))
+      }
+    }
+  }
+  message("All columns normalized to snake_case.")
+}
