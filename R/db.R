@@ -23,9 +23,9 @@ create_genie_db <- function(db_path) {
   DBI::dbExecute(con, "
     CREATE TABLE IF NOT EXISTS cna (
       release_version      VARCHAR,
-      Hugo_Symbol          VARCHAR,
-      Tumor_Sample_Barcode VARCHAR,
-      CNA_value            INTEGER
+      hugo_symbol          VARCHAR,
+      tumor_sample_barcode VARCHAR,
+      cna_value            INTEGER
     )
   ")
 

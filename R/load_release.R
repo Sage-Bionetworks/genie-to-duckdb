@@ -260,6 +260,7 @@ add_release <- function(
   long[, release_version := release_version]
   long[, CNA_value := suppressWarnings(as.integer(CNA_value))]
   long <- long[!is.na(CNA_value) & CNA_value != 0L]
+  setnames(long, tolower)
 
   DBI::dbAppendTable(con, "cna", long)
 }
