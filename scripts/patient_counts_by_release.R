@@ -32,7 +32,7 @@ tbl(con, "clinical_patient") |>
   group_by(release_version) %>%
   summarize(
     n_rows = n(),
-    n_pts = n_distinct(PATIENT_ID),
+    n_pts = n_distinct(patient_id),
     .groups = 'drop'
   ) |>
   mutate(ratio = n_rows / n_pts) |>
@@ -40,4 +40,43 @@ tbl(con, "clinical_patient") |>
   collect() |>
   print(n = Inf)
 
+DBI::dbGetQuery(con, "DESCRIBE releases")
+
+DBI::dbGetQuery(con, "SELECT * from releases")
+
+DBI::dbGetQuery(con, "DESCRIBE mutations")
+
+tbl(con, "mutations") |>
+  group_by(release_version) %>%
+  summarize(
+    n_rows = n(),
+    n_samp_with_mut = n_distinct(tumor_sample_barcode),
+    .groups = 'drop'
+  ) |>
+  arrange(release_version) %>%
+  print(n = Inf)
+# So mutations also doesn't have all the releases for some reason - surprised by that.
+
 DBI::dbDisconnect(con, shutdown = TRUE)
+
+# bpc look:
+con <- DBI::dbConnect(
+  duckdb::duckdb(),
+  dbdir = "db/genie_bpc.duckdb",
+  read_only = TRUE
+)
+DBI::dbGetQuery(con, "SHOW TABLES")
+# This is convenience we have with duckDB:
+DBI::dbGetQuery(con, "DESCRIBE ca_ind")
+
+
+tbl(con, "pt") |>
+  group_by(bpc_cancer) %>%
+  summarize(
+    n_rows = n(),
+    n_pts = n_distinct(record_id),
+    .groups = 'drop'
+  ) |>
+  mutate(ratio = n_rows / n_pts) |>
+  collect() |>
+  print(n = Inf)
