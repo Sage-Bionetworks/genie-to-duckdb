@@ -69,8 +69,7 @@ DBI::dbGetQuery(con, "SHOW TABLES")
 # This is convenience we have with duckDB:
 DBI::dbGetQuery(con, "DESCRIBE ca_ind")
 
-
-tbl(con, "pt") |>
+tbl(con, "ca_ind") |>
   group_by(bpc_cancer) %>%
   summarize(
     n_rows = n(),
